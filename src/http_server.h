@@ -206,7 +206,7 @@ class HTTPAPIServer : public HTTPServer {
       }
     }
 
-    AllocPayload() : default_output_kind_(OutputInfo::Kind::JSON){};
+    AllocPayload() : default_output_kind_(OutputInfo::Kind::JSON) {};
     std::unordered_map<std::string, OutputInfo*> output_map_;
     AllocPayload::OutputInfo::Kind default_output_kind_;
   };
@@ -241,7 +241,8 @@ class HTTPAPIServer : public HTTPServer {
         TRITONSERVER_InferenceResponse* response, const uint32_t flags,
         void* userp);
     virtual TRITONSERVER_Error* FinalizeResponse(
-        TRITONSERVER_InferenceResponse* response);
+        TRITONSERVER_InferenceResponse* response,
+        HTTPAPIServer::InferRequestClass* infer_request);
 
     // Helper function to set infer response header in the form specified by
     // the endpoint protocol
@@ -310,7 +311,8 @@ class HTTPAPIServer : public HTTPServer {
 
     // Response preparation
     TRITONSERVER_Error* FinalizeResponse(
-        TRITONSERVER_InferenceResponse* response) override;
+        TRITONSERVER_InferenceResponse* response,
+        HTTPAPIServer::InferRequestClass* infer_request) override;
     void AddErrorJson(TRITONSERVER_Error* error);
     static void StartResponse(evthr_t* thr, void* arg, void* shared);
 
@@ -377,7 +379,7 @@ class HTTPAPIServer : public HTTPServer {
     RequestReleasePayload(
         const std::shared_ptr<TRITONSERVER_InferenceRequest>& inference_request,
         evbuffer* buffer)
-        : inference_request_(inference_request), buffer_(buffer){};
+        : inference_request_(inference_request), buffer_(buffer) {};
 
     ~RequestReleasePayload()
     {

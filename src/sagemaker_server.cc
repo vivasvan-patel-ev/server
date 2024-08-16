@@ -397,7 +397,7 @@ SagemakerAPIServer::SagemakeInferRequestClass::InferResponseComplete(
     err = TRITONSERVER_ErrorNew(
         TRITONSERVER_ERROR_INTERNAL, "received an unexpected null response");
   } else {
-    err = infer_request->FinalizeResponse(response);
+    err = infer_request->FinalizeResponse(response, infer_request);
   }
 
 #ifdef TRITON_ENABLE_TRACING

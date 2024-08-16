@@ -257,3 +257,18 @@ For questions, we recommend posting in our community
 
 Please refer to the [NVIDIA Developer Triton page](https://developer.nvidia.com/nvidia-triton-inference-server)
 for more information.
+
+
+
+# Commands
+
+```
+docker cp tritonserver_builder:/tmp/tritonbuild/install /home/ubuntu/server/build
+docker cp tritonserver_builder:/tmp/tritonbuild/ci /home/ubuntu/server/build
+
+docker build -t tritonserver -f /home/ubuntu/server/build/Dockerfile .
+
+docker tag tritonserver:latest 771575179338.dkr.ecr.us-east-2.amazonaws.com/serial-container-test-main:custom-tritonserver-c2
+
+docker push 771575179338.dkr.ecr.us-east-2.amazonaws.com/serial-container-test-main:custom-tritonserver-c2
+```

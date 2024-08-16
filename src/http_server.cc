@@ -33,10 +33,12 @@
 #include <event2/buffer.h>
 #include <re2/re2.h>
 
+#include <sstream>
 #include <algorithm>
 #include <list>
 #include <regex>
 #include <thread>
+#include <string>
 
 #include "classification.h"
 
@@ -3734,7 +3736,7 @@ HTTPAPIServer::InferRequestClass::InferResponseComplete(
     err = TRITONSERVER_ErrorNew(
         TRITONSERVER_ERROR_INTERNAL, "received an unexpected null response");
   } else {
-    err = infer_request->FinalizeResponse(response);
+    err = infer_request->FinalizeResponse(response, infer_request);
   }
 
 #ifdef TRITON_ENABLE_TRACING
@@ -3761,9 +3763,50 @@ HTTPAPIServer::InferRequestClass::InferResponseComplete(
       "deleting inference response");
 }
 
+// Callback function to iterate over headers
+static int print_header(evhtp_kv_t* header, void* arg) {
+    std::ostringstream* log_stream = static_cast<std::ostringstream*>(arg);
+    *log_stream << header->key << ": " << header->val << "; ";
+    return 0; // Return 0 to continue iterating
+}
+
+// Function to log all headers and the body correctly
+void log_request_details(const evhtp_request_t* req) {
+    if (req) {
+        std::ostringstream log_stream;
+        log_stream << "Vivasvan Headers: ";
+        if (req->headers_in) {
+            evhtp_headers_for_each(req->headers_in, print_header, &log_stream);
+        }
+
+        // Accessing the request body
+        evbuffer* buf = req->buffer_in;
+        if (buf) {
+            size_t len = evbuffer_get_length(buf);
+            if (len > 0) {
+                char* data = new char[len + 1];
+                evbuffer_remove(buf, data, len); // Use evbuffer_remove to copy and drain the data
+                data[len] = '\0'; // Null-terminate the buffer
+
+                // Check if the content is likely to be binary
+                if (std::string(data).find('\0') == std::string::npos) {
+                    log_stream << " Body: " << data;
+                } else {
+                    log_stream << " Body contains binary data and is not logged for safety.";
+                }
+                delete[] data; // Clean up the buffer
+            }
+        }
+
+        LOG_VERBOSE(1) << log_stream.str();
+    }
+}
+
+
 TRITONSERVER_Error*
 HTTPAPIServer::InferRequestClass::FinalizeResponse(
-    TRITONSERVER_InferenceResponse* response)
+    TRITONSERVER_InferenceResponse* response,
+    HTTPAPIServer::InferRequestClass* infer_request)
 {
   RETURN_IF_ERR(TRITONSERVER_InferenceResponseError(response));
 
@@ -3783,6 +3826,15 @@ HTTPAPIServer::InferRequestClass::FinalizeResponse(
   RETURN_IF_ERR(response_json.AddStringRef("model_name", model_name));
   RETURN_IF_ERR(response_json.AddString(
       "model_version", std::move(std::to_string(model_version))));
+
+  // Add HTTPAPIServer::InferRequestClass* request as json to response
+  // RETURN_IF_ERR(
+  //     response_json.Add("request", infer_request->request_->ToJson()));
+  LOG_VERBOSE(1) << "Vivasvan: "<< infer_request->EvHtpRequest();
+
+  // Usage in your code
+  LOG_VERBOSE(1) << "Vivasvan: ";
+  log_request_details(infer_request->EvHtpRequest());
 
   // If the response has any parameters, convert them to JSON.
   uint32_t parameter_count;
@@ -4091,7 +4143,7 @@ HTTPAPIServer::GenerateRequestClass::InferResponseComplete(
 
   TRITONSERVER_Error* err = nullptr;
   if (response != nullptr) {
-    err = infer_request->FinalizeResponse(response);
+    err = infer_request->FinalizeResponse(response, infer_request);
   }
   if (err != nullptr) {
     infer_request->AddErrorJson(err);
@@ -4223,7 +4275,8 @@ HTTPAPIServer::GenerateRequestClass::SendChunkResponse(bool end)
 
 TRITONSERVER_Error*
 HTTPAPIServer::GenerateRequestClass::FinalizeResponse(
-    TRITONSERVER_InferenceResponse* response)
+    TRITONSERVER_InferenceResponse* response,
+    HTTPAPIServer::InferRequestClass* infer_request)
 {
   triton_response_ = response;
   RETURN_IF_ERR(TRITONSERVER_InferenceResponseError(response));
