@@ -33,12 +33,12 @@
 #include <event2/buffer.h>
 #include <re2/re2.h>
 
-#include <sstream>
 #include <algorithm>
 #include <list>
 #include <regex>
-#include <thread>
+#include <sstream>
 #include <string>
+#include <thread>
 
 #include "classification.h"
 
@@ -3763,43 +3763,40 @@ HTTPAPIServer::InferRequestClass::InferResponseComplete(
       "deleting inference response");
 }
 
-// Callback function to iterate over headers
-static int print_header(evhtp_kv_t* header, void* arg) {
-    std::ostringstream* log_stream = static_cast<std::ostringstream*>(arg);
-    *log_stream << header->key << ": " << header->val << "; ";
-    return 0; // Return 0 to continue iterating
-}
 
-// Function to log all headers and the body correctly
-void log_request_details(const evhtp_request_t* req) {
-    if (req) {
-        std::ostringstream log_stream;
-        log_stream << "Vivasvan Headers: ";
-        if (req->headers_in) {
-            evhtp_headers_for_each(req->headers_in, print_header, &log_stream);
-        }
+// Extract and return the JSON body part from the request
+std::string
+get_json_body(const evhtp_request_t* req)
+{
+  std::string json_body;
+  if (!req) {
+    return json_body;  // Return empty string if request is null
+  }
 
-        // Accessing the request body
-        evbuffer* buf = req->buffer_in;
-        if (buf) {
-            size_t len = evbuffer_get_length(buf);
-            if (len > 0) {
-                char* data = new char[len + 1];
-                evbuffer_remove(buf, data, len); // Use evbuffer_remove to copy and drain the data
-                data[len] = '\0'; // Null-terminate the buffer
-
-                // Check if the content is likely to be binary
-                if (std::string(data).find('\0') == std::string::npos) {
-                    log_stream << " Body: " << data;
-                } else {
-                    log_stream << " Body contains binary data and is not logged for safety.";
-                }
-                delete[] data; // Clean up the buffer
-            }
-        }
-
-        LOG_VERBOSE(1) << log_stream.str();
+  // Accessing the request body for JSON portion only
+  evbuffer* buf = req->buffer_in;
+  if (buf) {
+    size_t json_header_size = 0;
+    evhtp_kv_t* content_type =
+        evhtp_headers_find_header(req->headers_in, "Content-Type");
+    if (content_type && strstr(content_type->value, "json-header-size=")) {
+      sscanf(
+          strstr(content_type->value, "json-header-size=") + 17, "%zu",
+          &json_header_size);
     }
+
+    if (json_header_size > 0 && json_header_size <= evbuffer_get_length(buf)) {
+      char* json_data = new char[json_header_size + 1];
+      evbuffer_remove(
+          buf, json_data,
+          json_header_size);  // Use evbuffer_remove to ensure data is read once
+      json_data[json_header_size] = '\0';  // Null-terminate the buffer
+      json_body.assign(json_data);
+      delete[] json_data;  // Clean up the buffer
+    }
+  }
+
+  return json_body;
 }
 
 
@@ -3828,13 +3825,8 @@ HTTPAPIServer::InferRequestClass::FinalizeResponse(
       "model_version", std::move(std::to_string(model_version))));
 
   // Add HTTPAPIServer::InferRequestClass* request as json to response
-  // RETURN_IF_ERR(
-  //     response_json.Add("request", infer_request->request_->ToJson()));
-  LOG_VERBOSE(1) << "Vivasvan: "<< infer_request->EvHtpRequest();
-
-  // Usage in your code
-  LOG_VERBOSE(1) << "Vivasvan: ";
-  log_request_details(infer_request->EvHtpRequest());
+  RETURN_IF_ERR(response_json.AddString(
+      "request", get_json_body(infer_request->EvHtpRequest())));
 
   // If the response has any parameters, convert them to JSON.
   uint32_t parameter_count;
