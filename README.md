@@ -260,9 +260,20 @@ for more information.
 
 
 
-# Commands
+# Commands for quickly building the tritonserver image without reinstalling all the dependencies 
 
-```
+```shell
+time ./build.py -v --enable-gpu --backend tensorrt --endpoint sagemaker --endpoint http --endpoint grpc --endpoint vertex-ai --enable-logging --enable-stats --enable-metric --enable-gpu-metric --enable-cpu-metrics --enable-tracing --enable-nvtx
+
+# Go in the tritonserver_builder container
+docker exec -it tritonserver_builder /bin/bash
+
+
+# Make required changes and run ./cmake_build.sh (Noncold start - 2 mins)
+./cmake_build.sh
+
+# Copy the install and ci folders to the host machine
+
 docker cp tritonserver_builder:/tmp/tritonbuild/install /home/ubuntu/server/build
 docker cp tritonserver_builder:/tmp/tritonbuild/ci /home/ubuntu/server/build
 
